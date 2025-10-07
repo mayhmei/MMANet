@@ -1,0 +1,64 @@
+# configs/pretrain.yaml
+# 模型基本信息
+model:
+  name: "{dataset}_model_128d_8h_5l_20250924"
+  type: "bert"
+  name_or_path: null  # 从头训练，不加载预训练模型
+  cache_dir: null
+
+# 数据路径
+data:
+  dataset: 'vpn_pcz_multi_shift_2'
+  train_file: "../../TrafficData/{dataset}/mmnet/{dataset}_pretrain.txt"
+  eval_file: "../../TrafficData/{dataset}/mmnet/{dataset}_pretrain_val.txt"
+  output_dir: "../../Model/pretrain/{dataset}" # 基础目录
+  config_file: "../../Config/pretrain_config.json"
+  tokenizer_file: "../../Config/vocab.txt"
+
+# 训练参数
+training:
+  # // 训练设置
+  do_train: true
+  do_eval: true
+  do_test: true
+  do_fine_tune: false
+  should_continue: false
+  overwrite_cache: false
+  seed_flag: true
+  do_test: true
+  do_fine_tune: false
+  
+  # // 预训练策略
+  mlm: true  # 掩码语言模型
+  line_by_line: false
+  
+  # // 评估策略
+  evaluate_during_training: false
+  each_epoch_eval: true
+  each_checkpoint_eval: false
+  each_batch_eval: false
+  
+  # // 超参数
+  max_seq_length: 400
+  batch_size: 128  # per_gpu_train_batch_size,train_batch_size
+  eval_batch_size: 128  # per_gpu_eval_batch_size
+  test_batch_size: 128  # per_gpu_test_batch_size
+  learning_rate: 1e-3
+  warmup_proportion: 0.1
+  num_epochs: 100  # num_train_epochs
+  max_steps: -1
+  max_grad_norm: 1.0
+  fp16_opt_level: "O1"  # 设置混合精度优化级别，O0 到 O3
+  weight_decay: 0.0
+  adam_epsilon: 1e-8
+  overwrite_output_dir: true
+  gradient_accumulation_steps: 1
+
+
+log:
+  local_rank: -1
+# GPU设置
+gpu:
+  start: 0
+  n_gpu: 1
+  device: "cuda:1"

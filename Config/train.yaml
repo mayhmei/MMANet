@@ -1,0 +1,69 @@
+model:
+  trf_heads: 1               # transformer头数
+  fusion_heads: 1            # 融合头数
+  trf_layers: 1              # transformer块数
+  fusion_layers: 1           # 融合层数
+  trf_feedforward: 1024      # transformer中FNN的大小
+  trf_dropout: 0.3           # dropout概率
+  emb: 128                   # 特征维度
+  num_classes: 4            # 分类数量
+  max_burst_num: 100         # 最大burst数量
+  temperature: 0.3           # 对比学习温度
+  alpha: 0.4                 # 对比学习软目标混合权重（与代码一致，避免默认值歧义）
+  update_pretrain_params: true
+  use_segment_embedding: true
+  use_position_embedding: true
+  use_feature_segment_embedding: true
+  shuffle_data: true
+  name: "mmnet_{dataset}"
+  mode: "test"           # 可设为 'pretrain' 或 'finetune' 或 'test'
+  lambda_mlm: 0.0            # 预训练的MLM开关，这里禁用
+
+data:
+  pad_num: 10                # 每个流的包数量
+  pad_len: 400               # 每个包的最大字节长度
+  packet_sequence_num: 100   # 一个数据包的序列数量
+  burst_sequence_num: 50     # 一个数据包的burst序列数量
+  pcaket_features_num: 2     # 包特征数量
+  burst_features_num: 4      # burst特征数量
+  n_vocab: 261
+  Serial_features: true
+  Parallel_feature: false
+  dataset: "vpn_pcz_multi_shift_1"
+
+training:
+  seed: 42
+  learning_rate: 0.001
+  epoch: 100
+  batch_size: 32
+  require_improvement: 10000   # 早停的耐心值（基于batch计数）
+  contrastive_weight: 0.5
+  k: 10
+  freeze_feature_extractors: false
+
+path:
+  # 字节/词表与预训练模型目录
+  vocab_path: '../../Config/vocab.txt'
+  pretrain_path: "../../Model/pretrain/{dataset}/"
+
+  # 如需在微调时加载预训练权重，请取消下一行注释并填写真实路径
+  pretrained_model_path: "../../Model/contrastive/save/vpn_pcz_multi_shift_1_pretrain_2025-10-03_01-24-54/checkpoints/best_pretrain_model.pth"
+  finetune_model_path: "../../Model/contrastive/save/vpn_pcz_multi_shift_2_finetune_2025-10-03_01-50-30/checkpoints/best_finetune_model.pth"
+  # 原始数据文件路径（非缓存）
+  train_path: "../../TrafficData/{dataset}/mmnet/{dataset}_train.txt"
+  test_path: "../../TrafficData/{dataset}/mmnet/{dataset}_test.txt"
+  label_path: "../../TrafficData/{dataset}/mmnet/{dataset}_label.txt"
+  finetune_train_path: "../../TrafficData/{dataset}/mmnet/{dataset}_fusion_train.txt"
+  finetune_test_path: "../../TrafficData/{dataset}/mmnet/{dataset}_fusion_test.txt"
+  test_mode_path: "../../TrafficData/{dataset}/mmnet/{dataset}_train.txt"
+  # /home/hm/HMNet/TrafficData/cxy_time2/mmnet/cxy_time2_test.txtd
+
+  # 输出与缓存
+  save_path: "../../Model/contrastive/save"
+  cache_path: "../../TrafficData/DataCache/"
+
+device:
+  device: "cuda:0"
+  queue_size: 65536
+  momentum: 0.995
+  alpha: 0.4,,image.png
