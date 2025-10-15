@@ -7,7 +7,7 @@ model:
 
 
 data:
-  dataset: 'vpn_pcz_multi_shift_2'
+  dataset: ''
   train_file: "../../TrafficData/{dataset}/mmnet/{dataset}_pretrain.txt"
   eval_file: "../../TrafficData/{dataset}/mmnet/{dataset}_pretrain_val.txt"
   output_dir: "../../Model/pretrain/{dataset}" 

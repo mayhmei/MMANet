@@ -16,7 +16,7 @@ model:
   use_feature_segment_embedding: true
   shuffle_data: true
   name: "mmnet_{dataset}"
-  mode: "test"
+  mode: "pretrain"
   lambda_mlm: 0.0
 
 data:
@@ -29,7 +29,7 @@ data:
   n_vocab: 261
   Serial_features: true
   Parallel_feature: false
-  dataset: "vpn_pcz_multi_shift_1"
+  dataset: ""
 
 training:
   seed: 42
@@ -42,18 +42,16 @@ training:
   freeze_feature_extractors: false
 
 path:
-  vocab_path: '../../Config/vocab.txt'
-  pretrain_path: "../../Model/pretrain/{dataset}/"
-  pretrained_model_path: "../../Model/contrastive/save/vpn_pcz_multi_shift_1_pretrain_2025-10-03_01-24-54/checkpoints/best_pretrain_model.pth"
-  finetune_model_path: "../../Model/contrastive/save/vpn_pcz_multi_shift_2_finetune_2025-10-03_01-50-30/checkpoints/best_finetune_model.pth"
-  train_path: "../../TrafficData/{dataset}/mmnet/{dataset}_train.txt"
-  test_path: "../../TrafficData/{dataset}/mmnet/{dataset}_test.txt"
-  label_path: "../../TrafficData/{dataset}/mmnet/{dataset}_label.txt"
-  finetune_train_path: "../../TrafficData/{dataset}/mmnet/{dataset}_fusion_train.txt"
-  finetune_test_path: "../../TrafficData/{dataset}/mmnet/{dataset}_fusion_test.txt"
-  test_mode_path: "../../TrafficData/{dataset}/mmnet/{dataset}_train.txt"
-  save_path: "../../Model/contrastive/save"
-  cache_path: "../../TrafficData/DataCache/"
+  vocab_path: '/Config/vocab.txt'
+  pretrain_path: "/Model/pretrain/{dataset}/"
+  pretrained_model_path: ""
+  train_path: "/TrafficData/{dataset}/mmnet/{dataset}_train.txt"
+  test_path: "/TrafficData/{dataset}/mmnet/{dataset}_test.txt"
+  label_path: "/TrafficData/{dataset}/mmnet/{dataset}_label.txt"
+  finetune_train_path: "/TrafficData/{dataset}/mmnet/{dataset}_fusion_train.txt"
+  finetune_test_path: "/TrafficData/{dataset}/mmnet/{dataset}_fusion_test.txt"
+  save_path: "/Model/contrastive/save"
+  cache_path: "/TrafficData/DataCache/"
 
 device:
   device: "cuda:0"
