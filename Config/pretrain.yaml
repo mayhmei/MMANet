@@ -8,11 +8,11 @@ model:
 
 data:
   dataset: ''
-  train_file: "../../TrafficData/{dataset}/mmnet/{dataset}_pretrain.txt"
-  eval_file: "../../TrafficData/{dataset}/mmnet/{dataset}_pretrain_val.txt"
-  output_dir: "../../Model/pretrain/{dataset}" 
-  config_file: "../../Config/pretrain_config.json"
-  tokenizer_file: "../../Config/vocab.txt"
+  train_file: "/TrafficData/{dataset}/mmnet/{dataset}_pretrain.txt"
+  eval_file: "/TrafficData/{dataset}/mmnet/{dataset}_pretrain_val.txt"
+  output_dir: "/Model/pretrain/{dataset}" 
+  config_file: "/Config/pretrain_config.json"
+  tokenizer_file: "/Config/vocab.txt"
 
 
 training:
