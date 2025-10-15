@@ -7,18 +7,18 @@ import pickle
 from sklearn.model_selection import train_test_split
 import random
 
-# 添加父目录到系统路径
+# Add parent directory to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from prepare_data import prepare_data
 
-def load_label_list(label_path):
-    """加载标签列表"""
+def load_labels(label_path):
+    """Load the label list."""
     with open(label_path, 'r', encoding='utf-8') as f:
         return [line.strip() for line in f.readlines()]
 
 def stratified_shuffle_preserve_blocks(data):
-    """按类别打乱数据，同时保持每个类别内的样本顺序"""
-    # 按类别分组
+    """Shuffle by class while preserving sample order within each class."""
+    # Group by class
     class_groups = {}
     for item in data:
         label = item[-1]
@@ -26,11 +26,11 @@ def stratified_shuffle_preserve_blocks(data):
             class_groups[label] = []
         class_groups[label].append(item)
     
-    # 打乱每个类别内的样本
+    # Shuffle samples within each class
     for label in class_groups:
         random.shuffle(class_groups[label])
     
-    # 重新组合数据
+    # Reassemble data
     shuffled_data = []
     max_samples = max(len(samples) for samples in class_groups.values())
     
@@ -47,7 +47,6 @@ class TrafficDataset(Dataset):
         self.data = data
     
     def __getitem__(self, index):
-        # 解包数据
         (packet_time_interval, 
         packet_payload_length,
         packet_direction,
@@ -68,7 +67,7 @@ class TrafficDataset(Dataset):
         byte_flow_burst_indices, 
         label) = self.data[index]
         
-        # 转换为tensor
+        # Convert to tensor if not already
         packet_time_interval = packet_time_interval.detach().clone() if isinstance(packet_time_interval, torch.Tensor) else torch.tensor(packet_time_interval, dtype=torch.float32)
         packet_payload_length = packet_payload_length.detach().clone() if isinstance(packet_payload_length, torch.Tensor) else torch.tensor(packet_payload_length, dtype=torch.float32)
         packet_direction = packet_direction.detach().clone() if isinstance(packet_direction, torch.Tensor) else torch.tensor(packet_direction, dtype=torch.long)
@@ -112,5 +111,5 @@ class TrafficDataset(Dataset):
             ), label  
     
     def __len__(self):
-        """返回数据集大小"""
+        """Return dataset size."""
         return len(self.data)

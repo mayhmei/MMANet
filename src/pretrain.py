@@ -33,12 +33,12 @@ from transformers import (
     
 )
 
-class ConfigObj:  # 配置对象类，用于将字典转换为对象
-    def __init__(self, d):  # 初始化函数
-        for k, v in d.items():  # 遍历配置字典
-            if isinstance(v, dict):  # 如果值是字典类型
-                v = ConfigObj(v)  # 递归转换为ConfigObj对象
-            setattr(self, k, v)  # 设置属性
+class ConfigObj:  # Configuration wrapper to convert dicts into objects
+    def __init__(self, d):  # Initializer
+        for k, v in d.items():  # Iterate config dictionary
+            if isinstance(v, dict):  # If the value is a dict
+                v = ConfigObj(v)  # Recursively wrap into ConfigObj
+            setattr(self, k, v)  # Assign as attribute
 
 # 创建假的SummaryWriter类
 class SummaryWriter:
@@ -55,7 +55,7 @@ class TextDataset(Dataset):
     def __init__(self, tokenizer: PreTrainedTokenizer, config, file_path: str, block_size=512):
         assert os.path.isfile(file_path)
         directory, filename = os.path.split(file_path)
-        filename_wo_ext = os.path.splitext(filename)[0]  # 去掉扩展名
+        filename_wo_ext = os.path.splitext(filename)[0]  # Strip file extension
 
         cached_features_file = os.path.join(
             '../../TrafficData/DataCache/', filename_wo_ext + "_" + config.model.type + "_mlm_" + str(block_size) + "_cached"
@@ -81,7 +81,7 @@ class TextDataset(Dataset):
                     line = line.strip().split(' ')
                     if len(line) > block_size:
                         line = line[:block_size]
-                    if len(line)==1:  # 去掉空字符
+                    if len(line)==1:  # Skip empty token
                         continue
                     tokenized_line = tokenizer.convert_tokens_to_ids(line)
                     if len(tokenized_line) > 0:
@@ -106,7 +106,7 @@ class TextDataset(Dataset):
             with open(cached_features_file, "wb") as handle:
                 pickle.dump(self.examples, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-            if len(self.examples) < 10:  # 如果样本数太少，可能有问题
+            if len(self.examples) < 10:  # Too few examples; may indicate a problem
                 logger.warning("WARNING: Only %d examples were processed! This is abnormally low.", len(self.examples))
 
     def __len__(self):
@@ -135,7 +135,7 @@ class LineByLineTextDataset(Dataset):
         return torch.tensor(self.examples[i], dtype=torch.long)
 
 def get_config(config_path):
-    with open(config_path, 'r', encoding='utf-8') as f: # 打开配置文件
+    with open(config_path, 'r', encoding='utf-8') as f:  # Open config file
         config = ConfigObj(yaml.safe_load(f))
         config.data.train_file = config.data.train_file.format(dataset=config.data.dataset)
         config.data.eval_file = config.data.eval_file.format(dataset=config.data.dataset)
@@ -145,38 +145,35 @@ def get_config(config_path):
     return config
     
 def setup_logging(config):
-    """设置日志系统"""
-    # 确保输出目录存在
+    """Set up the logging system."""
+    # Ensure output directory exists
     os.makedirs(config.data.output_dir, exist_ok=True)
 
-    # 创建日志文件路径
+    # Create log file path
     log_file = os.path.join(config.data.output_dir, "training.log")
 
-    # 设置基本配置
+    # Basic logging configuration
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO if config.log.local_rank in [-1, 0] else logging.WARN,
         handlers=[
-            logging.FileHandler(log_file),  # 文件处理器
-            logging.StreamHandler()  # 控制台处理器
+            logging.FileHandler(log_file),  # File handler
+            logging.StreamHandler()  # Console handler
         ]
     )
-
-    # 获取日志记录器
+    # Get logger
     logger = logging.getLogger(__name__)
-    
-    # 记录训练环境信息
+    # Record environment info
     logger.warning(
         "训练环境: 进程排名=%s, 设备=%s, GPU数量=%s, 分布式=%s, 16位精度=%s",
         config.log.local_rank, config.gpu.device, config.gpu.n_gpu,
         bool(config.log.local_rank != -1), getattr(config.training, 'fp16', False)
     )
-    
     return logger
 
 def _sorted_checkpoints(config, checkpoint_prefix="checkpoint", use_mtime=False) -> List[str]:
-    import re  # 确保正则模块可用
+    import re  # Ensure regex module available
     ordering_and_checkpoint_path = []
 
     glob_checkpoints = glob.glob(os.path.join(config.data.output_dir, "{}-*".format(checkpoint_prefix)))
@@ -194,8 +191,8 @@ def _sorted_checkpoints(config, checkpoint_prefix="checkpoint", use_mtime=False)
     return checkpoints_sorted
 
 def validate_args(config):
-    """验证参数的有效性"""
-    # BERT类模型必须使用MLM
+    """Validate the correctness of configuration arguments."""
+    # BERT-like models must use MLM
     if config.model.type in ["bert", "roberta", "distilbert", "camembert"] and not config.training.mlm:
         raise ValueError("BERT-like models must be run with --mlm flag")
     
@@ -208,14 +205,14 @@ def validate_args(config):
             and config.training.do_train and not config.training.overwrite_output_dir):
         raise ValueError(f"Output directory ({config.data.output_dir}) already exists and is not empty") 
     
-    if config.training.should_continue: # 接着某一个checkpoint继续训练，如果找不到相应的检查点则报错
+    if config.training.should_continue:
         sorted_checkpoints = _sorted_checkpoints(config)
         if len(sorted_checkpoints) == 0:
             raise ValueError("Used --should_continue but no checkpoint was found in --output_dir.")
         else:
             config.model.name_or_path = sorted_checkpoints[-1]
     
-    # 若重新训练模型，overwrite_output_dir这个覆盖参数又设置为False，那么就会报错，提示已经存在该训练模型，再执行就会覆盖之前训练的模型
+   
     if ( 
             os.path.exists(config.data.output_dir)
             and os.listdir(config.data.output_dir)
@@ -228,7 +225,7 @@ def validate_args(config):
             )
         )
     
-    # 检查输出目录是否存在，若不存在则创建新的
+    
     if not os.path.exists(config.data.output_dir):
         os.makedirs(config.data.output_dir, exist_ok=True)
     
@@ -253,7 +250,7 @@ def load_model_config(config):
 
 def load_tokenizer(config):
     if config.data.tokenizer_file:
-        Tokenizer = BertTokenizer # 类变量，将transformers中的类传给Tokenizer
+        Tokenizer = BertTokenizer  # Class alias for transformers tokenizer
         tokenizer = Tokenizer(vocab_file=config.data.tokenizer_file, 
                               max_seq_length=config.training.max_seq_length - 2,
                               model_max_length=config.training.max_seq_length) 
@@ -265,7 +262,7 @@ def load_tokenizer(config):
             "and load it from here, using --tokenizer_name"
         )
     
-    # 限制分词的最大长度
+    # Limit tokenizer maximum length
     if config.training.max_seq_length <= 0:
         config.training.max_seq_length = tokenizer.model_max_length
         # Our input block size will be the max possible for the model
@@ -275,8 +272,8 @@ def load_tokenizer(config):
     return tokenizer
 
 def initialize_model(config, model_config, logger):
-    # 如何初始化模型
-    if config.model.name_or_path: # 如果提供了模型路径（args.model_name_or_path不为空），则加载现有的预训练模型
+    
+    if config.model.name_or_path: 
         model = AutoModelWithLMHead.from_pretrained(
             config.model.name_or_path,
             from_tf=bool(".ckpt" in config.model.name_or_path),
@@ -284,14 +281,14 @@ def initialize_model(config, model_config, logger):
             cache_dir=config.model.cache_dir,
         )
     else:
-        logger.info("从头开始训练")
-        if config.training.do_fine_tune:    # 如果没有预训练模型，但do_fine_tune为True，则从输出目录加载之前训练的模型     
+        logger.info("from scratch")
+        if config.training.do_fine_tune:       
             model = AutoModel.from_pretrained(config.data.output_dir)
-        else: # 如果上面两种情况都不是，则使用配置文件创建全新模型
+        else: 
             model = AutoModelWithLMHead.from_config(model_config)
             
-    model.to(config.gpu.device) # 模型移动到目标设备
-    config.training.train_batch_size = config.training.batch_size * max(1, config.gpu.n_gpu) # 设置批次大小
+    model.to(config.gpu.device) 
+    config.training.train_batch_size = config.training.batch_size * max(1, config.gpu.n_gpu) 
     return model
 
 def load_and_cache_examples(config, tokenizer, evaluate=False):
@@ -350,7 +347,7 @@ def train_and_evaluate(config, model, tokenizer, model_config, logger):
     
     if config.training.do_eval:
         train_dataset = load_and_cache_examples(config, tokenizer, evaluate=False)
-        # 将Dataset对象转换为一个序列列表
+        # Convert Dataset to a list of sequences
         train_sequences = [train_dataset[i] for i in range(len(train_dataset))]
         train_dataset_pad = pad_sequence(train_sequences, batch_first=True, padding_value=tokenizer.pad_token_id)
         train_sampler = RandomSampler(train_dataset_pad) if config.log.local_rank == -1 else DistributedSampler(
@@ -358,7 +355,7 @@ def train_and_evaluate(config, model, tokenizer, model_config, logger):
         train_dataloader = DataLoader(
             train_dataset_pad, sampler=train_sampler, batch_size=config.training.batch_size
         )
-        # 验证集整体测试
+        # Evaluate on the entire train set
         model = AutoModelWithLMHead.from_config(model_config)
         model.to(config.gpu.device)
         model.load_state_dict(torch.load(os.path.join(config.data.output_dir, config.model.name + ".pth")))
@@ -375,7 +372,7 @@ def train_and_evaluate(config, model, tokenizer, model_config, logger):
                 outputs = model(inputs, labels=labels)
                 loss = outputs[0]
 
-            # 添加缺失的累加逻辑
+            # Add missing accumulation logic
             train2eval_loss += loss.item()
             nb_train_eval_steps += 1
 
@@ -384,7 +381,7 @@ def train_and_evaluate(config, model, tokenizer, model_config, logger):
                     (train2eval_loss, eval_result['eval_loss']))
 
 def set_seed(config):
-    # 兼容 config.training.seed 或 config.seed，默认 42
+    
     seed = 42
     if hasattr(config, "training") and hasattr(config.training, "seed"):
         try:
@@ -418,7 +415,7 @@ def evaluate(config, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, pre
 
     eval_batch_size = int(config.training.eval_batch_size) * max(1, int(config.gpu.n_gpu))
 
-    # 将Dataset对象转换为一个序列列表
+    # Convert Dataset to a list of sequences
     eval_sequences = [eval_dataset[i] for i in range(len(eval_dataset))]
     eval_dataset_pad = pad_sequence(eval_sequences, batch_first=True, padding_value=tokenizer.pad_token_id)
     eval_sampler = RandomSampler(eval_dataset_pad) if config.log.local_rank == -1 else DistributedSampler(eval_dataset_pad)
@@ -460,11 +457,11 @@ def evaluate(config, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, pre
     return result
 
 def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTokenizer) -> Tuple[int, int, float, float]:
-    # 记录到 TensorBoard（可按需替换为你实际使用的记录器）
+    # Log to TensorBoard (replace with your actual logger if needed)
     if config.log.local_rank in [-1, 0]:
         tb_writer = SummaryWriter()
 
-    # 将Dataset对象转换为一个序列列表，并进行pad
+    # Convert Dataset to a list of sequences and pad
     train_sequences = [train_dataset[i] for i in range(len(train_dataset))]
     train_dataset_pad = pad_sequence(train_sequences, batch_first=True, padding_value=tokenizer.pad_token_id)
     train_sampler = RandomSampler(train_dataset_pad) if config.log.local_rank == -1 else DistributedSampler(train_dataset_pad)
@@ -472,14 +469,14 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
         train_dataset_pad, sampler=train_sampler, batch_size=config.training.train_batch_size
     )
 
-    # 计算总步数和 epoch 数
+    # Compute total steps and epochs
     if config.training.max_steps > 0:
         t_total = int(config.training.max_steps)
         config.training.num_epochs = int(config.training.max_steps // max(1, (len(train_dataloader) // int(config.training.gradient_accumulation_steps))) + 1)
     else:
         t_total = (len(train_dataloader) // int(config.training.gradient_accumulation_steps)) * int(config.training.num_epochs)
 
-    # 优化器与调度器
+    # Optimizer and scheduler
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
         {
@@ -499,7 +496,7 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
         num_training_steps=t_total,
     )
 
-    # 恢复优化器/调度器（如果存在）
+    # Restore optimizer/scheduler if available
     if (
         getattr(config.model, "name_or_path", None)
         and os.path.isdir(config.model.name_or_path)
@@ -514,10 +511,10 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
         try:
             from apex import amp
         except ImportError:
-            raise ImportError("请先安装 apex 以启用 fp16 训练: https://www.github.com/nvidia/apex")
+            raise ImportError("Please install apex to enable fp16 training: https://www.github.com/nvidia/apex")
         model, optimizer = amp.initialize(model, optimizer, opt_level=getattr(config.training, "fp16_opt_level", "O1"))
 
-    # 多卡/分布式
+    # Multi-GPU / Distributed
     if int(config.gpu.n_gpu) > 1:
         model = torch.nn.DataParallel(model)
 
@@ -526,7 +523,7 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
             model, device_ids=[int(config.log.local_rank)], output_device=int(config.log.local_rank), find_unused_parameters=True
         )
 
-    # 训练日志
+    # Training logs
     logger.info("***** Running training *****")
     logger.info("  Num examples = %d", len(train_dataset))
     logger.info("  Num Epochs = %d", int(config.training.num_epochs))
@@ -539,7 +536,7 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
     logger.info("  Gradient Accumulation steps = %d", int(config.training.gradient_accumulation_steps))
     logger.info("  Total optimization steps = %d", int(t_total))
 
-    # 断点续训步数推断
+    # Resume step inference from checkpoint
     global_step = 0
     epochs_trained = 0
     steps_trained_in_current_epoch = 0
@@ -557,7 +554,7 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
         except ValueError:
             logger.info("  Starting fine-tuning.")
 
-    # token embedding resize（分词器可能扩展）
+    # Token embedding resize (tokenizer may be extended)
     model_to_resize = model.module if hasattr(model, "module") else model
     model_to_resize.resize_token_embeddings(len(tokenizer))
 
@@ -576,7 +573,7 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
         tr_loss = 0.0
         steps_trained_left = steps_trained_in_current_epoch
 
-        # 进度条（每100个batch更新一次）
+        # Progress bar (update every 100 batches)
         epoch_iterator = tqdm(
             train_dataloader,
             desc=f"Epoch {e + 1}/{int(config.training.num_epochs)}",
@@ -621,13 +618,13 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
                 model.zero_grad()
                 global_step += 1
 
-                # 更新进度条信息
+                # Update progress bar info
                 epoch_iterator.set_postfix(
                     loss=f"{tr_loss / max(1, nb_tr_steps):.4f}",
                     lr=f"{scheduler.get_last_lr()[0]:.7f}"
                 )
 
-                # 每个 batch 评估（可选）
+                # Optional: per-batch evaluation
                 if getattr(config.training, "each_batch_eval", False):
                     eval_result = evaluate(config, model, tokenizer)
                     epoch_iterator.set_postfix(
@@ -638,12 +635,12 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
             if int(config.training.max_steps) > 0 and global_step > int(config.training.max_steps):
                 break
 
-        # 每个 epoch 评估（推荐：pretrain.yaml 已开启）
+        # Per-epoch evaluation (recommended: enabled in pretrain.yaml)
         if getattr(config.training, "each_epoch_eval", True):
             eval_result = evaluate(config, model, tokenizer)
             train2eval_loss = tr_loss / max(1, nb_tr_steps)
 
-            # 写文件记录
+            # Write to file
             output_dir = config.data.output_dir
             os.makedirs(output_dir, exist_ok=True)
             fpath = os.path.join(output_dir, "train_eval_loss.txt")
@@ -652,9 +649,9 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
                 f.write("-epoch %d -train_loss %.4f -eval_loss %.4f\n" % (e, train2eval_loss, eval_result['eval_loss']))
 
             logger.info("------------epoch %d -train_loss %.4f -eval_loss %.4f----------------", e, train2eval_loss, eval_result['eval_loss'])
-            tqdm.write(f"Epoch {e+1}/{int(config.training.num_epochs)} 完成: loss={train2eval_loss:.4f}, eval_loss={eval_result['eval_loss']:.4f}")
+            tqdm.write(f"Epoch {e+1}/{int(config.training.num_epochs)} completed: loss={train2eval_loss:.4f}, eval_loss={eval_result['eval_loss']:.4f}")
 
-            # 保存最优
+            # Save best
             if best_eval_loss > eval_result['eval_loss']:
                 best_eval_loss = eval_result['eval_loss']
                 best_train_loss = train2eval_loss
@@ -671,7 +668,7 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
     if config.log.local_rank in [-1, 0]:
         tb_writer.close()
 
-    # 收尾：再次保存最优模型
+    # Finalize: save best model again
     output_dir = config.data.output_dir
     os.makedirs(output_dir, exist_ok=True)
     if best_model is not None:
@@ -684,7 +681,7 @@ def train(config, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedTo
 
 def normalize_config_types(config):
     try:
-        # 训练相关数值
+        # Training numeric values
         if hasattr(config, "training"):
             # float
             if hasattr(config.training, "learning_rate"):
@@ -701,39 +698,39 @@ def normalize_config_types(config):
                       "gradient_accumulation_steps", "seed"]:
                 if hasattr(config.training, k):
                     setattr(config.training, k, int(getattr(config.training, k)))
-            # 默认值
+            # defaults
             if not hasattr(config.training, "max_grad_norm"):
                 config.training.max_grad_norm = 1.0
             if not hasattr(config.training, "mlm_probability"):
                 config.training.mlm_probability = 0.15
-        # GPU 数值
+        # GPU values
         if hasattr(config, "gpu") and hasattr(config.gpu, "n_gpu"):
             config.gpu.n_gpu = int(config.gpu.n_gpu)
-        # 日志进程 rank
+        # Logger process rank
         if hasattr(config, "log") and hasattr(config.log, "local_rank"):
             try:
                 config.log.local_rank = int(config.log.local_rank)
             except Exception:
                 pass
     except Exception as e:
-        logging.getLogger(__name__).warning(f"配置数值类型校验/转换时发生异常: {e}")
+        logging.getLogger(__name__).warning(f"Exception during config type normalization: {e}")
 
 def main():
     config = get_config('../../Config/pretrain.yaml')
-    # 先标准化配置中的数值类型，以免后续比较/计算出错
+    # Normalize numeric types in config to avoid calculation/comparison errors
     normalize_config_types(config)
-    logger = setup_logging(config) # 定义日志格式
-    validate_args(config) # 参数验证
+    logger = setup_logging(config) # Define logging format
+    validate_args(config) # Validate arguments
 
-    if config.training.seed_flag: # 设置随机种子便于复现
+    if config.training.seed_flag: # Set random seed for reproducibility
         set_seed(config)
 
-    model_config = load_model_config(config) # 加载模型配置文件
-    tokenizer = load_tokenizer(config) # 加载分词器
+    model_config = load_model_config(config) # Load model config
+    tokenizer = load_tokenizer(config) # Load tokenizer
 
-    model = initialize_model(config, model_config, logger) # 初始化模型
+    model = initialize_model(config, model_config, logger) # Initialize model
 
-    results = train_and_evaluate(config, model, tokenizer, model_config, logger) # 训练和评估，是词汇表词分类任务，模型内部已有这个全连接层，所有不需要外接全连接层去进行验证
+    results = train_and_evaluate(config, model, tokenizer, model_config, logger) # Train and evaluate; model contains internal head so no external classifier needed
 
 if __name__ == '__main__':
     main()

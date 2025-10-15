@@ -11,24 +11,25 @@ from data_utils import TrafficDataset, stratified_shuffle_preserve_blocks
 import sys
 import sklearn.metrics as metrics
 from collections import Counter
-import swanlab  # 添加SwanLab导入
+import swanlab  # Add SwanLab import
 sys.path.append('..')
 from prepare_data import prepare_data
 from sklearn.model_selection import train_test_split
-from utils import Logger  # 导入Logger类
+from utils import Logger  # Import Logger class
 
 from model_mmnet import MMNet
 
-class ConfigObj:  # 配置对象类，用于将字典转换为对象
-    def __init__(self, d):  # 初始化函数
-        for k, v in d.items():  # 遍历配置字典
-            if isinstance(v, dict):  # 如果值是字典类型
-                v = ConfigObj(v)  # 递归转换为ConfigObj对象
-            setattr(self, k, v)  # 设置属性
+class ConfigObj:
+    """Configuration wrapper to access dict values as attributes."""
+    def __init__(self, d):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                v = ConfigObj(v)
+            setattr(self, k, v)
 
 def get_config(config_path):
-    with open(config_path, 'r', encoding='utf-8') as f:  # 打开配置文件
-        config = ConfigObj(yaml.safe_load(f))  # 加载YAML配置并创建配置对象
+    with open(config_path, 'r', encoding='utf-8') as f:  # Open config file
+        config = ConfigObj(yaml.safe_load(f))  # Load YAML and create config object
         
         config.path.train_path = config.path.train_path.format(dataset=config.data.dataset)
         config.path.test_path = config.path.test_path.format(dataset=config.data.dataset)
@@ -39,88 +40,80 @@ def get_config(config_path):
         config.path.finetune_test_path = config.path.finetune_test_path.format(dataset=config.data.dataset)
         config.path.test_mode_path = config.path.test_mode_path.format(dataset=config.data.dataset)
         config.model.name = config.model.name.format(dataset=config.data.dataset)
-        with open(config.path.label_path, 'r', encoding='utf-8') as f:  # 打开标签文件
-            config.data.class_list = [line.strip() for line in f if line.strip()]  # 读取类别列表
+        with open(config.path.label_path, 'r', encoding='utf-8') as f:  # Open label file
+            config.data.class_list = [line.strip() for line in f if line.strip()]  # Read class list
 
-    # 特殊处理：设备
-    config.device = torch.device(config.device.device if torch.cuda.is_available() else 'cpu')  # 设置计算设备
-    
-    # 初始化BERT分词器
+    # Device handling
+    config.device = torch.device(config.device.device if torch.cuda.is_available() else 'cpu')  # Set compute device
+    # Initialize BERT tokenizer
     config.tokenizer = BertTokenizer(
-        vocab_file=config.path.vocab_path,  # 词汇表文件路径
-        max_seq_length=config.data.pad_len - 2,  # 最大序列长度
-        model_max_length=config.data.pad_len  # 模型最大长度
+        vocab_file=config.path.vocab_path,  # Path to vocab file
+        max_seq_length=config.data.pad_len - 2,  # Max sequence length
+        model_max_length=config.data.pad_len  # Model max length
     )
-    
-    # 1. 创建一个基于数据集和时间的唯一运行名称，以避免覆盖
+    # 1) Create a unique run name to avoid overwrites
     run_name = f"{config.data.dataset}_{config.model.mode}_{time.strftime('%Y-%m-%d_%H-%M-%S')}"
-    
-    # 2. 基于配置中的 'save_path' 创建一个主输出目录来存放本次运行的所有文件
+    # 2) Create a root output directory under 'save_path' to store this run
     run_output_dir = os.path.join(config.path.save_path, run_name)
-    config.path.run_output_dir = run_output_dir  # 存储以备后用
-    
-    # 3. 更新所有输出路径，使其指向这个唯一的运行目录
+    config.path.run_output_dir = run_output_dir  # Persist for later use
+    # 3) Update all output paths to this unique run directory
     config.path.print_path = os.path.join(run_output_dir, "console_output.txt")
     config.path.loss_path = os.path.join(run_output_dir, "loss_record.txt")
-    # 模型保存路径现在是一个目录，每个折的模型将在此目录下以不同名称保存
-    config.path.model_save_dir = os.path.join(run_output_dir, "checkpoints")
-    config.path.log_path = os.path.join(run_output_dir, "tensorboard_logs") # TensorBoard日志路径
-
-    # 4. 创建所有必要的目录
+    config.path.model_save_dir = os.path.join(run_output_dir, "checkpoints")  # directory of checkpoints
+    config.path.log_path = os.path.join(run_output_dir, "tensorboard_logs")  # TensorBoard logs path
+    # 4) Create directories if missing
     os.makedirs(config.path.run_output_dir, exist_ok=True)
     os.makedirs(config.path.model_save_dir, exist_ok=True)
     os.makedirs(config.path.log_path, exist_ok=True)
-    
-    return config  # 返回配置对象
+    return config  # Return config object
 
 
 def evaluate(config, model, data_loader, test=False):
-    """评估函数 - 支持预训练和微调模式"""
+    """Evaluation function — supports pretrain and finetune modes."""
     model.eval()
     loss_total = 0
     
     if config.model.mode == 'pretrain':
-        # 预训练模式：只计算对比损失
+        # Pretrain mode: compute contrastive loss only
         with torch.no_grad():
             for inputs, labels in data_loader:
-                # 使用 ALBEF 风格的损失（不更新动量/队列）
+                # Use ALBEF-style contrastive step (updates EMA and queues)
                 contrastive_loss = model.contrastive_step(inputs, alpha=getattr(config.model, 'alpha', 0.4), update=False)
                 loss_total += contrastive_loss.item()
         
         avg_loss = loss_total / len(data_loader)
-        return avg_loss  # 只返回平均对比损失
-    
+        return avg_loss  # Return average contrastive loss
     elif config.model.mode in ['finetune', 'test']:
-        # 微调/测试模式：计算分类指标
+        # Finetune/Test mode: compute classification metrics
         labels_all = torch.tensor([], dtype=torch.long, device='cpu')
         predict_all = torch.tensor([], dtype=torch.long, device='cpu')
         
         with torch.no_grad():
             for inputs, labels in data_loader:
-                # 将标签移到正确的设备
+                # Move labels to correct device
                 labels = labels.to(next(model.parameters()).device)
                 logits = model(inputs)
                 
-                # 确保输出维度正确
+                # Ensure output dimension correct
                 if isinstance(logits, tuple):
                     logits = logits[0]
                 
-                # 计算损失
+                # Compute loss
                 loss_fn = nn.CrossEntropyLoss()
                 loss = loss_fn(logits, labels)
                 loss_total += loss.item()
                 
-                # 获取预测结果
+                # Get prediction result
                 predic = torch.max(logits.detach(), 1)[1].cpu()
                 true_labels = labels.squeeze().cpu()
                 
-                # 统计所有样本的标签和预测值
+                # Statistics all samples labels and prediction values
                 labels_all = torch.cat([labels_all, true_labels])
                 predict_all = torch.cat([predict_all, predic])
         
         acc = metrics.accuracy_score(labels_all, predict_all)
         
-        if test:  # 如果是测试模式或显式要求，返回所有指标
+        if test:  # On test or explicitly requested, return all metrics
             f1 = metrics.f1_score(labels_all, predict_all, average='weighted', zero_division=0)
             precision = metrics.precision_score(labels_all, predict_all, average='weighted', zero_division=0)
             recall = metrics.recall_score(labels_all, predict_all, average='weighted', zero_division=0)
@@ -132,38 +125,38 @@ def evaluate(config, model, data_loader, test=False):
                 zero_division=0
             )
             confusion = metrics.confusion_matrix(labels_all, predict_all)
-            # 新增：返回 y_true / y_pred 供 SwanLab 混淆矩阵使用
+            # Added: return y_true/y_pred for SwanLab confusion matrix
             y_true = labels_all.numpy()
             y_pred = predict_all.numpy()
             return acc, loss_total / len(data_loader), f1, precision, recall, confusion, report, y_true, y_pred
         
-        return acc, loss_total / len(data_loader)  # 非测试模式只返回准确率和损失
+        return acc, loss_total / len(data_loader)  # Non-test returns accuracy and loss
 
 def loss_contrastive(view1, view2, temperature=0.7):
     batch_size = view1.shape[0]
     
-    # 特征归一化
+    # Feature normalization
     view1 = F.normalize(view1, p=2, dim=1)
     view2 = F.normalize(view2, p=2, dim=1)
     
-    # 计算相似度矩阵
+    # Compute similarity matrix
     similarity_matrix = torch.matmul(view1, view2.T) / temperature
     
-    # 正样本标签
+    # Positive sample labels
     labels = torch.arange(batch_size, device=view1.device)
     
-    # 计算对比损失
+    # Compute contrastive loss
     loss_1 = F.cross_entropy(similarity_matrix, labels, reduction='mean')
     loss_2 = F.cross_entropy(similarity_matrix.T, labels, reduction='mean')
     
-    # 调试信息
+    # Debug info
     # print(f"loss_1: {loss_1.item()}, loss_2: {loss_2.item()}")
     
-    # 双向平均
+    # Bidirectional average
     loss = (loss_1 + loss_2) / 2
     # print(f"averaged loss: {loss.item()}")
     
-    # # 强制确保返回标量
+    # Force scalar return
     # loss = loss.squeeze()
     # while loss.dim() > 0:
     #     loss = loss.mean()
@@ -172,16 +165,16 @@ def loss_contrastive(view1, view2, temperature=0.7):
     return loss
 
 def train(config, model, train_loader, dev_loader, logger):
-    """训练函数"""
+    """Training function."""
     model.train()
     
-    # 根据模式输出训练信息
+    # Log training info based on mode
     if config.model.mode == 'pretrain':
-        logging.info("开始预训练模式 - 对比学习")
+        logging.info("Starting pretrain mode - contrastive learning")
     elif config.model.mode == 'finetune':
-        logging.info("开始微调模式 - 分类任务")
+        logging.info("Starting finetune mode - classification task")
         if hasattr(config.training, 'freeze_feature_extractors') and config.training.freeze_feature_extractors:
-            logging.info("特征提取器已冻结，仅训练分类器")
+            logging.info("Feature extractors are frozen; training classifier only")
     
     optimizer = torch.optim.Adam(
         model.parameters(),
@@ -194,9 +187,9 @@ def train(config, model, train_loader, dev_loader, logger):
     last_improve = 0
     flag = False
     dev_best_loss = float('inf')
-    dev_best_acc = 0.0  # 添加最佳准确率跟踪
+    dev_best_acc = 0.0  # Track best accuracy
     
-    # 根据模式设置不同的模型保存路径
+    # Set different model save paths based on mode
     if config.model.mode == 'pretrain':
         best_model_path = os.path.join(config.path.model_save_dir, "best_pretrain_model.pth")
     elif config.model.mode == 'finetune':
@@ -213,16 +206,16 @@ def train(config, model, train_loader, dev_loader, logger):
             model.zero_grad()
             labels = labels.to(next(model.parameters()).device)
             
-            # 前向传播
+            # Forward pass
             if config.model.mode == 'pretrain':
-                # 使用模型内部的 ALBEF 风格对比步骤（更新 EMA 与队列）
+                # Use model's ALBEF-style contrastive step (updates EMA and queues)
                 loss = model.contrastive_step(inputs, alpha=getattr(config.model, 'alpha', 0.4), update=True)
-                # 预训练模式没有准确率概念
+                # No accuracy metric in pretrain mode
                 batch_acc = 0
             elif config.model.mode == 'finetune':
                 logits = model(inputs)
                 loss_fn = nn.CrossEntropyLoss()
-                # 确保标签在正确的设备上并且格式正确
+                # Ensure labels are on the correct device and properly shaped
                 labels = labels.to(logits.device)
                 if labels.dim() > 1:
                     labels = labels.squeeze(-1)
@@ -230,7 +223,7 @@ def train(config, model, train_loader, dev_loader, logger):
                 classification_loss = loss_fn(logits, labels)
                 loss = classification_loss
                 
-                # 计算训练指标
+                # Compute training metrics
                 import sklearn.metrics as metrics
                 true_labels = labels.squeeze().detach().cpu()
                 predic = torch.max(logits.detach(), 1)[1].cpu()
@@ -239,14 +232,14 @@ def train(config, model, train_loader, dev_loader, logger):
                 total_train += len(true_labels)
                 
             loss.backward()
-            # 添加梯度裁剪防止梯度爆炸
+            # Add gradient clipping to prevent gradient explosion
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step() # 更新模型参数
+            optimizer.step()  # Update model parameters
             
-            # 训练指标记录
+            # Accumulate training metrics
             train_loss += loss.item()
             
-            # 记录batch信息
+            # Log batch info
             if i % 10 == 0:
                 logger.log_batch(i, len(train_loader), loss.item(), batch_acc if config.model.mode == 'finetune' else None)
             
@@ -257,18 +250,18 @@ def train(config, model, train_loader, dev_loader, logger):
                         dev_best_loss = dev_loss
                         torch.save(model.state_dict(), best_model_path)
                         last_improve = total_batch
-                        logger.log_model_save(best_model_path, f"对比损失: {dev_loss:.4f}")
+                        logger.log_model_save(best_model_path, f"Contrastive loss: {dev_loss:.4f}")
                 elif config.model.mode == 'finetune':
-                    # 修改：评估时直接获取 dev 的 F1 / Precision / Recall
+                    # Retrieve dev F1 / Precision / Recall during evaluation
                     dev_acc, dev_loss, dev_f1, dev_precision, dev_recall, _, _, _, _ = evaluate(
                         config, model, dev_loader, test=True
                     )
-                    if dev_acc > dev_best_acc:  # 微调模式以准确率为准
+                    if dev_acc > dev_best_acc:  # Use accuracy as criterion in finetune mode
                         dev_best_acc = dev_acc
                         dev_best_loss = dev_loss
                         torch.save(model.state_dict(), best_model_path)
                         last_improve = total_batch
-                        logger.log_model_save(best_model_path, f"准确率: {dev_acc:.4f}")
+                        logger.log_model_save(best_model_path, f"Accuracy: {dev_acc:.4f}")
                 model.train()
             
             total_batch += 1
@@ -277,20 +270,20 @@ def train(config, model, train_loader, dev_loader, logger):
                 flag = True
                 break
         
-        # 计算epoch的平均指标
+        # Compute epoch-level averages
         epoch_time = time.time() - epoch_start_time
         avg_train_loss = train_loss / len(train_loader)
         avg_train_acc = train_acc / total_train if config.model.mode == 'finetune' and total_train > 0 else 0
         
-        # 在epoch结束时评估（避免重复调用）
+        # Evaluate at epoch end (avoid repeated calls)
         if config.model.mode == 'pretrain':
-            # 只有在没有在当前epoch的最后100个batch中评估过时才重新评估
+            # Re-evaluate only if not evaluated in the last 100 batches of the current epoch
             if total_batch % 100 != 0:
                 dev_loss = evaluate(config, model, dev_loader)
             logger.log_epoch(epoch, avg_train_loss, 0, dev_loss, 0, 
                            optimizer.param_groups[0]['lr'], epoch_time)
             
-            # 记录预训练模式的epoch指标到SwanLab
+            # Log pretrain epoch metrics to SwanLab
             swanlab.log({
                 "loss/avg_train_loss": avg_train_loss,
                 "loss/avg_dev_loss": dev_loss,
@@ -306,7 +299,7 @@ def train(config, model, train_loader, dev_loader, logger):
             logger.log_epoch(epoch, avg_train_loss, avg_train_acc, dev_loss, dev_acc, 
                            optimizer.param_groups[0]['lr'], epoch_time)
             
-            # 修改：将 dev 的 F1 / Precision / Recall 记录到 SwanLab
+            # Log dev F1 / Precision / Recall to SwanLab
             swanlab.log({
                 "loss/avg_train_loss": avg_train_loss,
                 "accuracy/avg_train_accuracy": avg_train_acc,
@@ -325,26 +318,25 @@ def train(config, model, train_loader, dev_loader, logger):
         if flag:
             break
     
-    # 训练结束后，加载最佳模型权重
+    # Load best model weights after training
     model.load_state_dict(torch.load(best_model_path))
     return model
 
 def run_test(config, logger):
-    # 仅用于测试评估的独立函数，避免改动 main 的训练流程
+    """Standalone test evaluation function to avoid changing main training flow."""
     test_data = prepare_data(config, config.path.test_mode_path)
     if config.model.shuffle_data:
         test_data = stratified_shuffle_preserve_blocks(test_data)
     test_loader = DataLoader(
         TrafficDataset(test_data),
         batch_size=config.training.batch_size,
-        shuffle=True,           # 测试也进行打乱
+        shuffle=True,           # Shuffle during test as well
         drop_last=False
     )
-
     model = MMNet(config).to(config.device)
-    model.mode = 'finetune'  # 测试时使用分类前向，避免 Unknown mode: test
+    model.mode = 'finetune'  # Use classification forward during test; avoid Unknown mode: test
     if not (hasattr(config.path, 'finetune_model_path') and os.path.exists(config.path.finetune_model_path)):
-        raise FileNotFoundError(f"未找到待评估的已微调权重: {getattr(config.path, 'finetune_model_path', None)}")
+        raise FileNotFoundError(f"Finetuned weights to evaluate not found: {getattr(config.path, 'finetune_model_path', None)}")
     model.load_state_dict(torch.load(config.path.finetune_model_path, map_location=config.device))
 
     test_acc, test_loss, test_f1, test_precision, test_recall, test_confusion, test_report, y_true, y_pred = evaluate(
@@ -352,7 +344,7 @@ def run_test(config, logger):
     )
     logger.log_test_results(test_acc, test_loss, test_f1, test_precision, test_recall, test_confusion, test_report)
 
-    # 记录最终测试指标到 SwanLab
+    # Log final test metrics to SwanLab
     swanlab.log({
         "accuracy/final_test_accuracy": test_acc,
         "loss/final_test_loss": test_loss,
@@ -367,48 +359,48 @@ def run_test(config, logger):
 
 def split_train_dev(data, dev_ratio=0.1, random_state=42):
     """
-    将训练数据分割为训练集和验证集
-    
+    Split the training data into train and dev sets.
+
     Args:
-        data: 原始训练数据列表
-        dev_ratio: 验证集比例，默认0.1 (10%)
-        random_state: 随机种子，保证结果可复现
-    
+        data: original training data list
+        dev_ratio: validation ratio (default 0.1, 10%)
+        random_state: random seed for reproducibility
+
     Returns:
-        train_data: 训练集数据
-        dev_data: 验证集数据
+        train_data: training subset
+        dev_data: validation subset
     """
-    # 提取标签用于分层抽样
+    # Extract labels for stratified sampling
     labels = [item[-1] for item in data]
     
-    # 使用分层抽样确保训练集和验证集的类别分布一致
+    # Use stratified sampling to preserve class distribution
     train_data, dev_data = train_test_split(
         data, 
         test_size=dev_ratio, 
         random_state=random_state,
-        stratify=labels  # 分层抽样，保持类别比例
+        stratify=labels  # Stratified sampling to preserve class distribution
     )
     
-    # 打印分割后的数据集信息
+    # Print dataset info after split
     train_labels = [item[-1] for item in train_data]
     dev_labels = [item[-1] for item in dev_data]
     
     train_dist = Counter(train_labels)
     dev_dist = Counter(dev_labels)
     
-    logging.info(f"数据分割完成:")
-    logging.info(f"训练集大小: {len(train_data)} ({len(train_data)/len(data)*100:.1f}%)")
-    logging.info(f"验证集大小: {len(dev_data)} ({len(dev_data)/len(data)*100:.1f}%)")
-    logging.info(f"训练集类别分布: {dict(train_dist)}")
-    logging.info(f"验证集类别分布: {dict(dev_dist)}")
+    logging.info(f"Data split completed:")
+    logging.info(f"Train set size: {len(train_data)} ({len(train_data)/len(data)*100:.1f}%)")
+    logging.info(f"Dev set size: {len(dev_data)} ({len(dev_data)/len(data)*100:.1f}%)")
+    logging.info(f"Train class distribution: {dict(train_dist)}")
+    logging.info(f"Dev class distribution: {dict(dev_dist)}")
     
     return train_data, dev_data
 
 def main():
-    # 加载配置
+    # Load configuration
     config = get_config('../../Config/contrastive_train.yaml')
     
-    # 初始化SwanLab
+    # Initialize SwanLab
     swanlab.init(
         project="MMNet-constrative-ALBEF",
         experiment_name=f"vpn_pcz_multi_shift_2_to_1_{config.model.mode}_training_{time.strftime('%Y%m%d_%H%M%S')}",
@@ -422,11 +414,11 @@ def main():
         }
     )
     
-    # 初始化日志记录器
+    # Initialize logger
     logger = Logger(config)
     logger.log_config()
     
-    # test 模式：极小改动，直接调用独立测试函数并早退
+    # Test mode: call standalone test function and exit early
     if config.model.mode == 'test':
         run_test(config, logger)
         logger.log_final_results('test')
@@ -441,13 +433,13 @@ def main():
         train_data = prepare_data(config, config.path.train_path)
         # test_data = prepare_data(config, config.path.test_path)
 
-    # 打乱数据
+    # Shuffle data
     if config.model.shuffle_data:
         train_data = stratified_shuffle_preserve_blocks(train_data)
         if config.model.mode == 'finetune':
             test_data = stratified_shuffle_preserve_blocks(test_data)
     
-    # 将训练数据分割为训练集和验证集 (9:1)
+    # Split training data into train and dev (9:1)
     train_data, dev_data = split_train_dev(train_data, dev_ratio=0.1)
 
     train_dataset = TrafficDataset(train_data)
@@ -459,32 +451,32 @@ def main():
     dev_loader = DataLoader(dev_dataset, batch_size=config.training.batch_size, shuffle=False, drop_last=(config.model.mode == 'pretrain'))
     
     
-    # 创建模型
+    # Create model
     model = MMNet(config).to(config.device)
     
-    # 如果是微调模式，加载预训练权重
+    # If finetune mode, load pretrained weights
     if config.model.mode == 'finetune' and hasattr(config.path, 'pretrained_model_path'):
         logging.info(f"Loading pretrained weights for finetuning from {config.path.pretrained_model_path}")
         model.load_pretrained_weights(config.path.pretrained_model_path)
         
-        # 如果配置中指定要冻结特征提取器
+        # Freeze feature extractors if configured
         if hasattr(config.training, 'freeze_feature_extractors') and config.training.freeze_feature_extractors:
             model.freeze_feature_extractors()
             logging.info("Feature extractors frozen, only training classifier")
 
-    # 训练模型
+    # Train model
     model = train(config, model, train_loader, dev_loader, logger)
     
-    # 测试模型
+    # Test model
     if config.model.mode == 'finetune':
-        # 新签名：接收 precision、recall、y_true、y_pred
+        # New signature: receive precision, recall, y_true, y_pred
         test_acc, test_loss, test_f1, test_precision, test_recall, test_confusion, test_report, y_true, y_pred = evaluate(
             config, model, test_loader, test=True
         )
-        # 更新 Logger 的调用
+        # Update Logger invocation
         logger.log_test_results(test_acc, test_loss, test_f1, test_precision, test_recall, test_confusion, test_report)
 
-        # 记录最终测试指标到SwanLab（新增 precision/recall）
+        # Log final test metrics to SwanLab (including precision/recall)
         swanlab.log({
                 "accuracy/final_test_accuracy": test_acc,
                 "loss/final_test_loss": test_loss,
@@ -493,18 +485,18 @@ def main():
                 "recall/final_test_recall": test_recall
             })
         
-        # 新增：上传混淆矩阵到 SwanLab（不再调用不存在的 swanlab.confusion_matrix）
-        # 优先使用 evaluate 返回的 test_confusion；若没有则用 sklearn 现算
+        # Upload confusion matrix to SwanLab (no longer calling nonexistent swanlab.confusion_matrix)
+        # Prefer evaluate's test_confusion; otherwise compute with sklearn
         cm = test_confusion if test_confusion is not None else metrics.confusion_matrix(
             y_true, y_pred, labels=list(range(len(config.data.class_list)))
         )
         swanlab.log({
             "confusion_matrix": cm.tolist()
         })
-    # 记录最终结果
+    # Log final results
     logger.log_final_results(config.model.mode)
     logger.close()
-    swanlab.finish()  # 结束SwanLab记录
+    swanlab.finish()  # Finish SwanLab logging
 
 if __name__ == '__main__':
     main()
