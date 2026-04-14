@@ -1,31 +1,31 @@
 model:
-  trf_heads: 12               # transformer头数
-  fusion_heads: 12            # 融合头数
-  trf_layers:  6             # transformer块数
-  fusion_layers: 6           # 融合层数
-  trf_feedforward: 3072      # transformer中FNN的大小,3072
-  trf_dropout: 0.1           # dropout概率
-  emb: 768                   # 特征维度
-  num_classes:             # 分类数量
-  max_burst_num: 100         # 最大burst数量
-  temperature: 0.3           # 对比学习温度
-  alpha: 0.4                 # 对比学习软目标混合权重（与代码一致，避免默认值歧义）
+  trf_heads: 12
+  fusion_heads: 12
+  trf_layers:  6
+  fusion_layers: 6
+  trf_feedforward: 3072
+  trf_dropout: 0.1
+  emb: 768
+  num_classes:
+  max_burst_num: 100
+  temperature: 0.3
+  alpha: 0.4
   update_pretrain_params: true
   use_segment_embedding: true
   use_position_embedding: true
   use_feature_segment_embedding: true
   shuffle_data: true
   name: "mmanet_{dataset}"
-  mode: "finetune"           # 可设为 'pretrain' 或 'finetune'
-  lambda_mlm: 0.0            # 预训练的MLM开关，这里禁用
+  mode: "finetune"
+  lambda_mlm: 0.0
 
 data:
-  pad_num: 10                # 每个流的包数量
-  pad_len: 64               # 每个包的最大字节长度
-  packet_sequence_num: 100   # 一个数据包的序列数量
-  burst_sequence_num: 50     # 一个数据包的burst序列数量YY
-  pcaket_features_num: 2     # 包特征数量
-  burst_features_num: 4      # burst特征数量
+  pad_num: 10
+  pad_len: 64
+  packet_sequence_num: 100
+  burst_sequence_num: 50
+  pcaket_features_num: 2
+  burst_features_num: 4
   n_vocab: 261
   Serial_features: true
   Parallel_feature: false
@@ -36,24 +36,20 @@ training:
   learning_rate: 0.0001
   epoch: 20
   batch_size: 32
-  require_improvement: 10000   # 早停的耐心值（基于batch计数）
+  require_improvement: 10000
   contrastive_weight: 0.5
   k: 10
   freeze_feature_extractors: false
+
 path:
-  # 字节/词表与预训练模型目录
   vocab_path: '../../Config/vocab.txt'
   pretrain_path: "../../Model/pretrain/{dataset}//"
-  # 如需在微调时加载预训练权重，请取消下一行注释并填写真实路径
   pretrained_model_path: "../../Model/inter_packet_pretrain/"
-  # 原始数据文件路径（非缓存）
   train_path: "../../TrafficData/{dataset}/mmnet/{dataset}_inter_train.txt"
   test_path: "../../TrafficData/{dataset}/mmnet/{dataset}_inter_test.txt"
   label_path: "../../TrafficData/{dataset}/mmnet/{dataset}_label.txt"
   finetune_train_path: "../../TrafficData/{dataset}/mmnet/{dataset}_fusion_train.txt"
   finetune_test_path: "../../TrafficData/{dataset}/mmnet/{dataset}_fusion_test.txt"
-
-  # 输出与缓存
   save_path: "../../Model/inter_packet_pretrain/{dataset}"
   cache_path: "../../TrafficData/DataCache/"
 
