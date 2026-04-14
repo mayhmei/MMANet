@@ -6,7 +6,7 @@ model:
   trf_feedforward: 3072      # transformer中FNN的大小,3072
   trf_dropout: 0.1           # dropout概率
   emb: 768                   # 特征维度
-  num_classes: 14            # 分类数量
+  num_classes:             # 分类数量
   max_burst_num: 100         # 最大burst数量
   temperature: 0.3           # 对比学习温度
   alpha: 0.4                 # 对比学习软目标混合权重（与代码一致，避免默认值歧义）
@@ -29,7 +29,7 @@ data:
   n_vocab: 261
   Serial_features: true
   Parallel_feature: false
-  dataset: "cic_iot_2022_6_http_finetune"
+  dataset: ""
 
 training:
   seed: 42
