@@ -6,7 +6,7 @@ model:
   trf_feedforward: 3072      # transformer中FNN的大小,3072
   trf_dropout: 0.1           # dropout概率
   emb: 768                   # 特征维度
-  num_classes: 14            # 分类数量
+  num_classes:             # 分类数量
   max_burst_num: 100         # 最大burst数量
   temperature: 0.3           # 对比学习温度
   alpha: 0.4                 # 对比学习软目标混合权重（与代码一致，避免默认值歧义）
@@ -29,7 +29,7 @@ data:
   n_vocab: 261
   Serial_features: true
   Parallel_feature: false
-  dataset: "cic_iot_2022_6_http_finetune"
+  dataset: ""
 
 training:
   seed: 42
@@ -43,9 +43,9 @@ training:
 path:
   # 字节/词表与预训练模型目录
   vocab_path: '../../Config/vocab.txt'
-  pretrain_path: "../../Model/pretrain/{dataset}/test20260327_model_768d_12h_6l_20260327/"
+  pretrain_path: "../../Model/pretrain/{dataset}//"
   # 如需在微调时加载预训练权重，请取消下一行注释并填写真实路径
-  pretrained_model_path: "../../Model/inter_packet_pretrain/IOT_pretrian_20260331/IOT_pretrian_20260331_pretrain_2026-03-31_22-27-09_http/checkpoints/best_pretrain_model.pth"
+  pretrained_model_path: "../../Model/inter_packet_pretrain/"
   # 原始数据文件路径（非缓存）
   train_path: "../../TrafficData/{dataset}/mmnet/{dataset}_inter_train.txt"
   test_path: "../../TrafficData/{dataset}/mmnet/{dataset}_inter_test.txt"
