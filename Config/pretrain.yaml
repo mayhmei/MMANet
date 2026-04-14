@@ -1,61 +1,64 @@
-# configs/pretrain.yaml
 model:
-  name: "{dataset}_model_128d_8h_5l_20250924"
-  type: "bert"
-  name_or_path: null  
-  cache_dir: null
-
+  trf_heads: 12               # transformer头数
+  fusion_heads: 12            # 融合头数
+  trf_layers:  6             # transformer块数
+  fusion_layers: 6           # 融合层数
+  trf_feedforward: 3072      # transformer中FNN的大小,3072
+  trf_dropout: 0.1           # dropout概率
+  emb: 768                   # 特征维度
+  num_classes: 14            # 分类数量
+  max_burst_num: 100         # 最大burst数量
+  temperature: 0.3           # 对比学习温度
+  alpha: 0.4                 # 对比学习软目标混合权重（与代码一致，避免默认值歧义）
+  update_pretrain_params: true
+  use_segment_embedding: true
+  use_position_embedding: true
+  use_feature_segment_embedding: true
+  shuffle_data: true
+  name: "mmanet_{dataset}"
+  mode: "finetune"           # 可设为 'pretrain' 或 'finetune'
+  lambda_mlm: 0.0            # 预训练的MLM开关，这里禁用
 
 data:
-  dataset: ''
-  train_file: "/TrafficData/{dataset}/mmnet/{dataset}_pretrain.txt"
-  eval_file: "/TrafficData/{dataset}/mmnet/{dataset}_pretrain_val.txt"
-  output_dir: "/Model/pretrain/{dataset}" 
-  config_file: "/Config/pretrain_config.json"
-  tokenizer_file: "/Config/vocab.txt"
-
+  pad_num: 10                # 每个流的包数量
+  pad_len: 64               # 每个包的最大字节长度
+  packet_sequence_num: 100   # 一个数据包的序列数量
+  burst_sequence_num: 50     # 一个数据包的burst序列数量YY
+  pcaket_features_num: 2     # 包特征数量
+  burst_features_num: 4      # burst特征数量
+  n_vocab: 261
+  Serial_features: true
+  Parallel_feature: false
+  dataset: "cic_iot_2022_6_http_finetune"
 
 training:
-  do_train: true
-  do_eval: true
-  do_test: true
-  do_fine_tune: false
-  should_continue: false
-  overwrite_cache: false
-  seed_flag: true
-  do_test: true
-  do_fine_tune: false
-  
-  mlm: true  
-  line_by_line: false
-  
- 
-  evaluate_during_training: false
-  each_epoch_eval: true
-  each_checkpoint_eval: false
-  each_batch_eval: false
-  
- 
-  max_seq_length: 400
-  batch_size: 128  # per_gpu_train_batch_size,train_batch_size
-  eval_batch_size: 128  # per_gpu_eval_batch_size
-  test_batch_size: 128  # per_gpu_test_batch_size
-  learning_rate: 1e-3
-  warmup_proportion: 0.1
-  num_epochs: 100  # num_train_epochs
-  max_steps: -1
-  max_grad_norm: 1.0
-  fp16_opt_level: "O1"  
-  weight_decay: 0.0
-  adam_epsilon: 1e-8
-  overwrite_output_dir: true
-  gradient_accumulation_steps: 1
+  seed: 42
+  learning_rate: 0.0001
+  epoch: 20
+  batch_size: 32
+  require_improvement: 10000   # 早停的耐心值（基于batch计数）
+  contrastive_weight: 0.5
+  k: 10
+  freeze_feature_extractors: false
+path:
+  # 字节/词表与预训练模型目录
+  vocab_path: '../../Config/vocab.txt'
+  pretrain_path: "../../Model/pretrain/{dataset}/test20260327_model_768d_12h_6l_20260327/"
+  # 如需在微调时加载预训练权重，请取消下一行注释并填写真实路径
+  pretrained_model_path: "../../Model/inter_packet_pretrain/IOT_pretrian_20260331/IOT_pretrian_20260331_pretrain_2026-03-31_22-27-09_http/checkpoints/best_pretrain_model.pth"
+  # 原始数据文件路径（非缓存）
+  train_path: "../../TrafficData/{dataset}/mmnet/{dataset}_inter_train.txt"
+  test_path: "../../TrafficData/{dataset}/mmnet/{dataset}_inter_test.txt"
+  label_path: "../../TrafficData/{dataset}/mmnet/{dataset}_label.txt"
+  finetune_train_path: "../../TrafficData/{dataset}/mmnet/{dataset}_fusion_train.txt"
+  finetune_test_path: "../../TrafficData/{dataset}/mmnet/{dataset}_fusion_test.txt"
 
+  # 输出与缓存
+  save_path: "../../Model/inter_packet_pretrain/{dataset}"
+  cache_path: "../../TrafficData/DataCache/"
 
-log:
-  local_rank: -1
-
-gpu:
-  start: 0
-  n_gpu: 1
+device:
   device: "cuda:1"
+  queue_size: 65536
+  momentum: 0.995
+  alpha: 0.4
