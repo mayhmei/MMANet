@@ -1,2 +1,3 @@
-# MMANet
-Seeking robustness in Heterogeneity: Synergizing Multimodal and Multi-Granularity for Encrypted Traffic Classification
+# M2ANet
+M2ANet: Alignment-Aware Multimodal Fusion with Multi-Granularity
+Modeling for Robust Encrypted Traffic Classification
