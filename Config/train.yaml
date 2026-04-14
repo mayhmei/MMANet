@@ -1,60 +1,66 @@
+# configs/pretrain.yaml
+# 模型基本信息
 model:
-  trf_heads: 1
-  fusion_heads: 1
-  trf_layers: 1
-  fusion_layers: 1
-  trf_feedforward: 1024
-  trf_dropout: 0.3
-  emb: 128
-  num_classes: 4
-  max_burst_num: 100
-  temperature: 0.3
-  alpha: 0.4
-  update_pretrain_params: true
-  use_segment_embedding: true
-  use_position_embedding: true
-  use_feature_segment_embedding: true
-  shuffle_data: true
-  name: "mmnet_{dataset}"
-  mode: "pretrain"
-  lambda_mlm: 0.0
+  name: "auto"
+  type: "bert"
+  name_or_path: null  # 从头训练，不加载预训练模型
+  cache_dir: null
 
+# 数据路径
 data:
-  pad_num: 10
-  pad_len: 400
-  packet_sequence_num: 100
-  burst_sequence_num: 50
-  pcaket_features_num: 2
-  burst_features_num: 4
-  n_vocab: 261
-  Serial_features: true
-  Parallel_feature: false
-  dataset: ""
+  dataset: 'test20260327' 
+  train_file: "../../TrafficData/{dataset}/mmnet/{dataset}_intra_train.txt"
+  eval_file: "../../TrafficData/{dataset}/mmnet/{dataset}_intra_test.txt"
+  output_dir: "../../Model/pretrain/{dataset}" # 基础目录
+  config_file: "../../Config/intra_packet_pretrain_config.json"
+  tokenizer_file: "../../Config/vocab.txt"
 
+# 训练参数
 training:
-  seed: 42
-  learning_rate: 0.001
-  epoch: 100
-  batch_size: 32
-  require_improvement: 10000
-  contrastive_weight: 0.5
-  k: 10
-  freeze_feature_extractors: false
+  # // 训练设置
+  do_train: true
+  do_eval: true
+  do_test: true
+  do_fine_tune: false
+  should_continue: false
+  overwrite_cache: false
+  seed_flag: true
+  do_test: true
+  do_fine_tune: false
+  
+  # // 预训练策略
+  mlm: true  # 掩码语言模型
+  line_by_line: false
+  
+  # // 评估策略
+  evaluate_during_training: false
+  each_epoch_eval: true
+  each_checkpoint_eval: false
+  each_batch_eval: false
+  
+  # // 超参数
+  max_seq_length: 64
+  batch_size: 128  # per_gpu_train_batch_size,train_batch_size
+  eval_batch_size: 128  # per_gpu_eval_batch_size
+  test_batch_size: 128  # per_gpu_test_batch_size
+  learning_rate: 1e-3
+  warmup_proportion: 0.1
+  # num_epochs: 100  # num_train_epochs
+  num_epochs: 100
+  max_steps: -1
+  max_grad_norm: 1.0
+  fp16_opt_level: "O1"  # 设置混合精度优化级别，O0 到 O3,   01表示使用混合精度；
+  weight_decay: 0.0
+  adam_epsilon: 1e-8
+  overwrite_output_dir: true
+  gradient_accumulation_steps: 1
 
-path:
-  vocab_path: '/Config/vocab.txt'
-  pretrain_path: "/Model/pretrain/{dataset}/"
-  pretrained_model_path: ""
-  train_path: "/TrafficData/{dataset}/mmnet/{dataset}_train.txt"
-  test_path: "/TrafficData/{dataset}/mmnet/{dataset}_test.txt"
-  label_path: "/TrafficData/{dataset}/mmnet/{dataset}_label.txt"
-  finetune_train_path: "/TrafficData/{dataset}/mmnet/{dataset}_fusion_train.txt"
-  finetune_test_path: "/TrafficData/{dataset}/mmnet/{dataset}_fusion_test.txt"
-  save_path: "/Model/contrastive/save"
-  cache_path: "/TrafficData/DataCache/"
 
-device:
-  device: "cuda:0"
-  queue_size: 65536
-  momentum: 0.995
-  alpha: 0.4,,image.png
+log:
+  local_rank: -1
+# GPU设置
+gpu:
+  start: 0
+  n_gpu: 1
+  # device: "auto"
+  device: "cuda:1"
